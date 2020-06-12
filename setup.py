@@ -23,6 +23,7 @@ setup(
     packages=['ml_riemann_solver'],
     install_requires=[
         'numpy',
+        'plotly',
     ],
     scripts=[],
     setup_requires=['pytest-runner'],
