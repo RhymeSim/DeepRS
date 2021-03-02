@@ -6,9 +6,10 @@ Exact Riemann Solver
 """
 
 
-from math import sqrt
-from .constants import GM1, GP1, GM1_2G, GG_GM1, GM1_GP1
 from .ideal_gas import pressure, sound_speed, primitive_to_conservative
+from math import sqrt
+from .constants import GM1, GP1, GM1_2G, GP1_2G, GG_GM1, GM1_GP1, G_INV, N_ITERATIONS, DESIRED_ACCURACY
+import sys
 
 
 def _solution_object():
@@ -90,6 +91,103 @@ def guess(l, r, axis):
     p5 = .5 * (l['p'] + r['p'])
 
     return p1, p2, p3, p4, p5
+
+
+def nonlinear_wave_function(s, p):
+    Ak = 2.0 / (GP1 * s['rho'])
+    Bk = GM1 / GP1 * s['p']
+
+    if p > s['p']:
+        factor = sqrt(Ak / (Bk + p))
+        f = factor * (p - s['p'])
+        fprime = factor * (1.0 - (p - s['p']) / (2.0 * (Bk + p)))
+    else:
+        f = 2.0 * s['cs'] / GM1 * ((p / s['p'])**(GM1_2G) - 1.0)
+        fprime = 1.0 / (s['rho'] * s['cs']) * (p / s['p'])**(-GP1_2G)
+
+    return f, fprime
+
+
+def iterate(sol, axis):
+    """
+    Finding the root of the pressure function
+
+    :param sol: filled _solution_object
+    :param axis: direction of the flow (x: 0, y: 1, z:2)
+
+    :return sol: updated _solution_object
+    """
+    ps = guess(sol['left'], sol['right'], axis)
+
+    found = False
+
+    for p in ps:
+        p_prev = 0.0
+
+        for i in range(N_ITERATIONS):
+            sol['star']['left']['f'], sol['star']['left']['fprime'] = \
+                nonlinear_wave_function(sol['left'], sol['star']['p'])
+            sol['star']['right']['f'], sol['star']['right']['fprime'] = \
+                nonlinear_wave_function(sol['right'], sol['star']['p'])
+
+            sol['star']['p'] -= (
+                sol['star']['left']['f'] + sol['star']['right']['f']
+                + (sol['right']['v'][axis] - sol['left']['v'][axis])
+            ) / (sol['star']['left']['fprime'] + sol['star']['right']['fprime'])
+
+            if sol['star']['p'] < 0:
+                break
+
+            if abs(sol['star']['p'] - p_prev) / abs(sol['star']['p'] + p_prev) < DESIRED_ACCURACY:
+                found = True
+                break
+
+            p_prev = sol['star']['p']
+
+        if found:
+            break
+
+    if sol['star']['p'] < 0:
+        print('Not converged')
+        sys.exit(0)
+
+    sol['star']['u'] = 0.5 * (
+        (sol['right']['v'][axis] + sol['left']['v'][axis])
+        + (sol['star']['right']['f'] - sol['star']['left']['f'])
+    )
+
+    ps_pl = sol['star']['p'] / sol['left']['p']
+    ps_pr = sol['star']['p'] / sol['right']['p']
+
+    if sol['star']['p'] > sol['left']['p']:
+        sol['star']['left']['is_shock'] = True
+        sol['star']['left']['shock']['rho'] = sol['left']['rho'] * \
+            (GM1_GP1 + ps_pl) / (GM1_GP1 * ps_pl + 1)
+        sol['star']['left']['shock']['speed'] = sol['left']['v'][axis] - \
+            sol['left']['cs'] * sqrt(GP1_2G * ps_pl + GM1_2G)
+    else:
+        sol['star']['left']['is_shock'] = False
+        sol['star']['left']['fan']['rho'] = sol['left']['rho'] * ps_pl**G_INV
+        sol['star']['left']['fan']['cs'] = sol['left']['cs'] * ps_pl**GM1_2G
+        sol['star']['left']['fan']['speed']['head'] = sol['left']['v'][axis] * \
+            sol['left']['cs']
+        sol['star']['left']['fan']['speed']['tail'] = sol['star']['u'] - \
+            sol['star']['left']['fan']['cs']
+
+    if sol['star']['p'] > sol['right']['p']:
+        sol['star']['right']['is_shock'] = True
+        sol['star']['right']['shock']['rho'] = sol['right']['rho'] * \
+            (GM1_GP1 + ps_pr) / (GM1_GP1 * ps_pr + 1)
+        sol['star']['right']['shock']['speed'] = sol['right']['v'][axis] + \
+            sol['right']['cs'] * sqrt(GP1_2G * ps_pr + GM1_2G)
+    else:
+        sol['star']['right']['is_shock'] = False
+        sol['star']['right']['fan']['rho'] = sol['right']['rho'] * ps_pr**G_INV
+        sol['star']['right']['fan']['cs'] = sol['right']['cs'] * ps_pr**GM1_2G
+        sol['star']['right']['fan']['speed']['head'] = sol['right']['v'][axis] + \
+            sol['right']['cs']
+        sol['star']['right']['fan']['speed']['tail'] = sol['star']['u'] + \
+            sol['star']['right']['fan']['cs']
 
 
 def _g_K(s):
