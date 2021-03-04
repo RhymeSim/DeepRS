@@ -23,6 +23,7 @@ setup(
     packages=['ml_riemann_solver'],
     install_requires=[
         'numpy',
+        'astropy',
         'plotly',
     ],
     scripts=[],

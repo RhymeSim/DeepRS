@@ -8,7 +8,7 @@ Exact Riemann Solver
 
 from .ideal_gas import pressure, sound_speed, primitive_to_conservative
 from math import sqrt
-from .constants import GM1, GP1, GM1_2G, GP1_2G, GG_GM1, GM1_GP1, G_INV, N_ITERATIONS, DESIRED_ACCURACY
+from .constants import G, GM1, GP1, GM1_2G, GP1_2G, GG_GM1, GM1_GP1, G_INV, N_ITERATIONS, DESIRED_ACCURACY
 import sys
 
 
@@ -123,6 +123,7 @@ def iterate(sol, axis):
 
     for p in ps:
         p_prev = 0.0
+        sol['star']['p'] = p
 
         for i in range(N_ITERATIONS):
             sol['star']['left']['f'], sol['star']['left']['fprime'] = \
